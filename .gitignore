@@ -1,0 +1,46 @@
+# OS generated files
+.DS_Store
+
+# Node.js
+node_modules/
+
+# Build files
+/dist/
+/build/
+/out/
+
+# Package files
+*.zip
+*.tar.gz
+
+# IDE files
+.idea/
+.vscode/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.wmv
+*.flv
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+
+# Documents
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
