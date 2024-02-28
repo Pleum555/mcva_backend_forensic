@@ -11,14 +11,18 @@ const s3 = new S3({
 });
 
 export const uploadToS3 = async (
-  file: Readable,
-  bucketName: string,
-  key: string
+  fileContent: JSON,
+  // jsonObject: JSON,
+  // bucketName: string,
+  fileName: string
 ): Promise<string> => {
+  
   const params: S3.Types.PutObjectRequest = {
-    Bucket: bucketName,
-    Key: key,
-    Body: file,
+    Bucket: process.env.BUCKET_NAME ?? 'test-forensic-backend',
+    // Bucket: bucketName,
+    Key: fileName,
+    // Body: jsonObject,
+    Body: Readable.from(JSON.stringify(fileContent)),
   };
 
   try {
@@ -29,3 +33,26 @@ export const uploadToS3 = async (
     throw error;
   }
 };
+
+export const readFileFromS3 = async (
+  fileName: string
+): Promise<JSON> => {
+  const params: S3.Types.GetObjectRequest = {
+    Bucket: process.env.BUCKET_NAME ?? 'test-forensic-backend',
+    Key: fileName,
+  };
+
+  try {
+    const data = await s3.getObject(params).promise();
+    return data.Body as JSON;
+  } catch (error) {
+    console.error('Error reading file from S3:', error);
+    throw error;
+  }
+};
+
+// export const forensic = async (
+//   fileName: string
+// ):Promise<JSON> => {
+//   return {test: ''} as JSON;
+// };
