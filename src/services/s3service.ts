@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 
 interface LogEntry {
   Name: string;
-  Surname: string;
+  // Surname: string;
   Activities: JSON[];
 }
 
@@ -13,7 +13,7 @@ interface LogResponse {
   Test_Session: string;
   Student_ID: string;
   Name: string;
-  Surname: string;
+  // Surname: string;
   Activities: JSON[];
 }
 
@@ -99,7 +99,7 @@ const uploadToS3 = async (
   Test_Session: string,
   Student_ID: string,
   Name: string,
-  Surname: string,
+  // Surname: string,
   log: JSON,
 ): Promise<string> => {
 
@@ -125,7 +125,7 @@ const uploadToS3 = async (
       // If the file doesn't exist or has invalid content, create a new list with the new log
       LogData = {
         Name: Name,
-        Surname: Surname,
+        // Surname: Surname,
         Activities: [log]
       };
     }

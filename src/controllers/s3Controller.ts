@@ -11,9 +11,9 @@ s3Controller.post('/upload', async (req: Request, res: Response) => {
     // const Test_Session = req.body.Test_Session;
     // const Student_ID = req.body.Student_ID
     // Destructure and create a new object with only the desired properties
-    const { Test_Session, Student_ID, Name, Surname, ...Data } = req.body;
+    const { Test_Session, Student_ID, Name, ...Data } = req.body;
     // Assuming "file_content" is a JSON object and "file_name" is a string
-    const url = await s3service.uploadToS3(Test_Session, Student_ID, Name, Surname, Data);
+    const url = await s3service.uploadToS3(Test_Session, Student_ID, Name, Data);
 
     // Respond with the S3 URL after successful upload
     res.json({ success: true, url });
