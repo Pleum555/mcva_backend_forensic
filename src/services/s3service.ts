@@ -69,7 +69,7 @@ const getAllActivityByTestSession = async (
     const data = await s3.listObjectsV2(params).promise();
     const keys = data.Contents?.map((object) => object.Key || '') || [];
 
-    console.log(keys)
+    // console.log(keys)
     const logEntries: LogResponse[] = [];
 
     // Loop through each key and retrieve the content
@@ -101,6 +101,7 @@ const uploadToS3 = async (
   Name: string,
   // Surname: string,
   log: JSON,
+  IP: string | undefined | null,
 ): Promise<string> => {
 
   try {
@@ -112,7 +113,12 @@ const uploadToS3 = async (
       // Handle the NoSuchKey error or log it if needed
       console.error('Error reading file from S3:', readError);
     }
-
+    // Create a new object by merging log and IP
+    const newActivity = {
+      ...log,
+      IP: IP || 'N/A',
+    };
+    
     let LogData : LogEntry;
 
     // If the file exists, update the log list
@@ -120,13 +126,14 @@ const uploadToS3 = async (
     if (existingLog) {
       const {Test_Session, Student_ID, ...Data} = existingLog
       LogData = Data
-      LogData.Activities.push(log);
+      LogData.Activities.push(newActivity)
+
     } else {
       // If the file doesn't exist or has invalid content, create a new list with the new log
       LogData = {
         Name: Name,
         // Surname: Surname,
-        Activities: [log]
+        Activities: [newActivity],
       };
     }
 

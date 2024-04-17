@@ -7,6 +7,10 @@
 # Node.js
 node_modules/
 
+# Package-lock.json
+package-lock.json
+yarn.lock
+
 # Build files
 /dist/
 /build/
