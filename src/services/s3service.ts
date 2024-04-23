@@ -3,10 +3,26 @@ import { S3 } from 'aws-sdk';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
 
+interface InitialLog {
+  Status: string;
+  Timestamp: string;
+}
+
+interface Activity {
+  Status: string;
+  Timestamp: string;
+  IP: string; // Assuming IP is a string
+}
+
+interface Suggestion {
+  DifferentIP: number;
+}
+
 interface LogEntry {
   Name: string;
   // Surname: string;
-  Activities: JSON[];
+  Activities: Activity[];
+  Suggestion?: Suggestion;
 }
 
 interface LogResponse {
@@ -14,7 +30,8 @@ interface LogResponse {
   Student_ID: string;
   Name: string;
   // Surname: string;
-  Activities: JSON[];
+  Activities: Activity[];
+  Suggestion?: Suggestion;
 }
 
 dotenv.config();
@@ -100,7 +117,7 @@ const uploadToS3 = async (
   Student_ID: string,
   Name: string,
   // Surname: string,
-  log: JSON,
+  log: InitialLog,
   IP: string | undefined | null,
 ): Promise<string> => {
 
@@ -151,10 +168,45 @@ const uploadToS3 = async (
   }
 };
 
+const analyzeIPsForTestSession = async (Test_Session: string, Student_ID: string): Promise<any> => {
+  try {
+    // Retrieve all activity logs for the given test session
+    const activityLogs = await getAllActivityByTestSessionAndStudentID(Test_Session, Student_ID);
+    // Check if activityLogs is undefined
+    if (!activityLogs) {
+      throw 'Activity logs not found.'
+    }
 
+    // Extract unique IP addresses from the activity logs and update the logs
+    const uniqueIPs: Set<string> = new Set();
+    activityLogs?.Activities.forEach((activity) => {
+      const ip = activity.IP;
+      if (ip && ip !== 'N/A') {
+        uniqueIPs.add(ip);
+      }
+    });
+    
+    // Add suggestion field to the log entry
+    activityLogs.Suggestion = { DifferentIP : uniqueIPs.size}; // Assigning the count of unique IPs to the Suggestion field
+
+    // Update activity logs in S3
+    const params: S3.Types.PutObjectRequest = {
+      Bucket: process.env.BUCKET_NAME ?? '',
+      Key: `${Test_Session}/${Student_ID}`,
+      Body: Readable.from(JSON.stringify(activityLogs)),
+    };
+    const data = await s3.upload(params).promise();
+    return data.Location || '';
+  
+  } catch (error) {
+    console.error('Error analyzing IPs:', error);
+    throw error;
+  }
+};
 
 export const s3service = {
   uploadToS3, 
   getAllActivityByTestSessionAndStudentID,
-  getAllActivityByTestSession
+  getAllActivityByTestSession,
+  analyzeIPsForTestSession
 }

@@ -15,6 +15,7 @@ function convertIPv6ToIPv4(ipv6: string): string | null {
 
 const s3Controller: Router = express.Router();
 s3Controller.use(requestIp.mw()); // Middleware to parse client IP
+
 // POST request to upload a file to S3
 s3Controller.post('/upload', async (req: Request, res: Response) => {
   let clientIp: string | undefined | null = req.clientIp; // This is the client's IP address
@@ -27,7 +28,6 @@ s3Controller.post('/upload', async (req: Request, res: Response) => {
   console.log('Client IPv4 =', clientIp);
   
   try {
-    // Example JSON body for uploading: { "file_content": { "test": "test" }, "file_name": "test.txt" }
     // const Test_Session = req.body.Test_Session;
     // const Student_ID = req.body.Student_ID
     // Destructure and create a new object with only the desired properties
@@ -62,6 +62,45 @@ s3Controller.get('/read/:Test_Session/:Student_ID?', async (req: Request, res: R
   } catch (error) {
     console.error('Error in S3 read controller:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
+// GET request to read a file from S3
+s3Controller.get('/suggestion/:Test_Session/:Student_ID?', async (req: Request, res: Response) => {
+  try {
+    // Extract the fileName parameter from the request path
+    const { Test_Session, Student_ID } = req.params;
+    let fileContent;
+
+    if( Student_ID !== undefined && Student_ID !== '' ){
+      fileContent = await s3service.getAllActivityByTestSessionAndStudentID(Test_Session, Student_ID);
+    }else{
+      fileContent = await s3service.getAllActivityByTestSession(Test_Session);
+    }
+
+    if (fileContent === undefined || Array.isArray(fileContent) && fileContent.length === 0) res.status(404).json({ success: false, error: 'File not found' });
+    else res.json(fileContent);
+    
+  } catch (error) {
+    console.error('Error in S3 read controller:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
+// GET request to analyze IPs in a test session
+s3Controller.get('/analyze/:Test_Session/:Student_ID', async (req: Request, res: Response) => {
+  try {
+    const { Test_Session, Student_ID } = req.params;
+
+    // Retrieve all activity logs for the given test session
+    const url = await s3service.analyzeIPsForTestSession(Test_Session, Student_ID);
+    
+    // Respond with the S3 URL after successful analyze
+    return res.json({ success: true, url });
+  } catch (error) {
+    console.error('Error analyzing IPs:', error);
+    if(error == 'Activity logs not found.') res.status(404).json({ success: false, error: error });
+    else res.status(500).json({ success: false, error: error });
   }
 });
 
