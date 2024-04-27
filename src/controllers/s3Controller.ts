@@ -4,13 +4,13 @@ import { s3service } from '../services/s3service';
 import requestIp from 'request-ip';
 import ip from 'ip';
 
-function convertIPv6ToIPv4(ipv6: string): string | null {
+function convertIPv6ToIPv4(ip: string): string | null {
   // Check if the address is in the correct format
-  if (ipv6.startsWith('::ffff:')) {
+  if (ip.startsWith('::ffff:')) {
       // Remove the IPv6 prefix
-      return ipv6.substring(7);
+      return ip.substring(7);
   }
-  return null;
+  return ip; // ip is IPv4.
 }
 
 const s3Controller: Router = express.Router();
@@ -22,7 +22,7 @@ s3Controller.post('/upload', async (req: Request, res: Response) => {
   // let clientIp: string | undefined | null = req.ip; // This is the client's IP address
   console.log('Client IP =', clientIp);
   // Convert IP from IPv6 to IPv4
-  if (clientIp && ip.isV6Format(clientIp)) {
+  if (clientIp && ip.isV6Format(clientIp)) { 
     clientIp = convertIPv6ToIPv4(clientIp);
   }
   console.log('Client IPv4 =', clientIp);
