@@ -8,7 +8,7 @@ RUN yarn install
 
 RUN yarn build
 
-EXPOSE 4400
+EXPOSE 3001
 
-ENTRYPOINT [ "sh", "migration.sh" ]
+ENTRYPOINT [ "yarn", "start" ]
 
