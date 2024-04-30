@@ -32,8 +32,9 @@ s3Controller.post('/upload', async (req: Request, res: Response) => {
     // const Student_ID = req.body.Student_ID
     // Destructure and create a new object with only the desired properties
     const { Test_Session, Student_ID, Name, ...Data } = req.body;
+    Data.IP = clientIp
     // Assuming "file_content" is a JSON object and "file_name" is a string
-    const url = await s3service.uploadToS3(Test_Session, Student_ID, Name, Data, clientIp);
+    const url = await s3service.uploadActivity(Test_Session, Student_ID, Name, Data);
 
     // Respond with the S3 URL after successful upload
     res.json({ success: true, url });
@@ -43,17 +44,17 @@ s3Controller.post('/upload', async (req: Request, res: Response) => {
   }
 });
 
-// GET request to read a file from S3
-s3Controller.get('/read/:Test_Session/:Student_ID?', async (req: Request, res: Response) => {
+// GET request to activities from S3
+s3Controller.get('/:Test_Session/activities/:Student_ID?', async (req: Request, res: Response) => {
   try {
     // Extract the fileName parameter from the request path
     const { Test_Session, Student_ID } = req.params;
     let fileContent;
 
     if( Student_ID !== undefined && Student_ID !== '' ){
-      fileContent = await s3service.getAllActivityByTestSessionAndStudentID(Test_Session, Student_ID);
+      fileContent = await s3service.getActivitiesByTestSessionAndStudentID(Test_Session, Student_ID);
     }else{
-      fileContent = await s3service.getAllActivityByTestSession(Test_Session);
+      fileContent = await s3service.getActivitiesByTestSession(Test_Session);
     }
 
     if (fileContent === undefined || Array.isArray(fileContent) && fileContent.length === 0) res.status(404).json({ success: false, error: 'File not found' });
@@ -65,19 +66,15 @@ s3Controller.get('/read/:Test_Session/:Student_ID?', async (req: Request, res: R
   }
 });
 
-// GET request to read a file from S3
-s3Controller.get('/suggestion/:Test_Session/:Student_ID?', async (req: Request, res: Response) => {
+// GET request to suggestions from S3
+s3Controller.get('/:Test_Session/suggestions', async (req: Request, res: Response) => {
   try {
     // Extract the fileName parameter from the request path
-    const { Test_Session, Student_ID } = req.params;
+    const { Test_Session } = req.params;
     let fileContent;
 
-    if( Student_ID !== undefined && Student_ID !== '' ){
-      fileContent = await s3service.getAllActivityByTestSessionAndStudentID(Test_Session, Student_ID);
-    }else{
-      fileContent = await s3service.getAllActivityByTestSession(Test_Session);
-    }
-
+    fileContent = await s3service.getSuggestionsByTestSession(Test_Session);
+    
     if (fileContent === undefined || Array.isArray(fileContent) && fileContent.length === 0) res.status(404).json({ success: false, error: 'File not found' });
     else res.json(fileContent);
     
@@ -88,17 +85,17 @@ s3Controller.get('/suggestion/:Test_Session/:Student_ID?', async (req: Request, 
 });
 
 // GET request to analyze IPs in a test session
-s3Controller.get('/analyze/:Test_Session/:Student_ID', async (req: Request, res: Response) => {
+s3Controller.get('/:Test_Session/analyze', async (req: Request, res: Response) => {
   try {
-    const { Test_Session, Student_ID } = req.params;
+    const { Test_Session } = req.params;
 
     // Retrieve all activity logs for the given test session
-    const url = await s3service.analyzeIPsForTestSession(Test_Session, Student_ID);
+    const url = await s3service.analyzeForTestSession(Test_Session);
     
     // Respond with the S3 URL after successful analyze
     return res.json({ success: true, url });
   } catch (error) {
-    console.error('Error analyzing IPs:', error);
+    console.error('Error analyzing :', error);
     if(error == 'Activity logs not found.') res.status(404).json({ success: false, error: error });
     else res.status(500).json({ success: false, error: error });
   }

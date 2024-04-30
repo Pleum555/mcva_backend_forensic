@@ -5,7 +5,7 @@ import router from './controllers/s3Controller';
 const cors = require('cors');
 
 const app: express.Application = express();
-const port: number = Number(process.env.PORT) || 3000;
+const port: number = Number(process.env.PORT) || 3001;
 
 const corsOptions = {
   origin: 'http://localhost:3000',
