@@ -2,6 +2,7 @@
 import { S3 } from 'aws-sdk';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
+import { float } from 'aws-sdk/clients/cloudfront';
 
 dotenv.config();
 
@@ -114,20 +115,6 @@ const cleanSuggestions = async (Test_Session: string): Promise<void> => {
 
 // ------------------------ Suggest Function ------------------------ //
 const checkDifferent_IP = (Log: LogEntry) :void => {
-// Example of Log
-// {
-//   "Name": "John Doe",
-//   "Activities": [
-//       {
-//           "Status": "Submit from password required",
-//           "Timestamp": "4/30/2024, 11:32 AM",
-//           "IP": "10.203.176.177"
-//       }
-//   ],
-//   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
-//   "Student_ID": "1"
-// }
-
   // Process Analyze
   const uniqueIPs: Set<string> = new Set();
   Log.Activities.forEach((activity) => {
@@ -151,31 +138,16 @@ const checkDifferent_IP = (Log: LogEntry) :void => {
 }
 
 const checkScreen_Activity = (Log: LogEntry) :void => {
-// Example of Log
-// {
-//   "Name": "John Doe",
-//   "Activities": [
-//       {
-//           "Status": "Submit from password required",
-//           "Timestamp": "4/30/2024, 11:32 AM",
-//           "IP": "10.203.176.177"
-//       }
-//   ],
-//   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
-//   "Student_ID": "1"
-// }
-
   // Process Analyze
   const InActivePeriods : number[] = []
   let When_InActive: number = -1; // Initialize to a default value
   Log.Activities.forEach((activity) => {
-    const ip = activity.IP;
     if( activity.Status  == 'Inactive Tab') {
       When_InActive = Date.parse(activity.Timestamp);
     }
     if (activity.Status === 'Active Tab') {
       if (When_InActive !== -1) { // Check if When_InActive is not the default value
-        const DifferentTime = Date.parse(activity.Timestamp) - When_InActive;
+        const DifferentTime: number = parseFloat(((Date.parse(activity.Timestamp) - When_InActive) / 1000).toFixed(2));
         InActivePeriods.push(DifferentTime);
         When_InActive = -1; // Reset When_InActive to the default value
       }
@@ -183,39 +155,26 @@ const checkScreen_Activity = (Log: LogEntry) :void => {
   });
 
   // Check For Screen Activity
-  if(InActivePeriods.length > 0) {
+  if(InActivePeriods.length >= 1) {
     let suggestion: SuggestEntry = {
       // Test_Session: Log.Test_Session,
       Student_ID: Log.Student_ID,
       Name: Log.Name,
       Type: SuggestType.DifferentIP,
-      Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} milliseconds`,
+      Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} seconds`,
 
     };
     uploadSuggestion(Log.Test_Session, suggestion)
   }
 }
 
-const checkShort_Interval_between_Answers = (Log: LogEntry) :void => {
-// Example of Log
-// {
-//   "Name": "John Doe",
-//   "Activities": [
-//       {
-//           "Status": "Submit from password required",
-//           "Timestamp": "4/30/2024, 11:32 AM",
-//           "IP": "10.203.176.177"
-//       }
-//   ],
-//   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
-//   "Student_ID": "1"
-// }
-
+const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
   const submissionTimestamps: number[] = [];
-  const SHORT_INTERVAL_THRESHOLD: number = -1
-  // Extract submission timestamps
+  const SHORT_INTERVAL_THRESHOLD: number = 10000; // 10 seconds threshold for short interval
+  const relevantStatuses = ['Submit', 'Finish Button', 'Save and Close']; // Relevant statuses for submissions
+
   Log.Activities.forEach((activity) => {
-    if (activity.Status === 'Submit from password required') {
+    if (relevantStatuses.some((status) => activity.Status.includes(status))) {
       const timestamp = Date.parse(activity.Timestamp);
       submissionTimestamps.push(timestamp);
     }
@@ -224,62 +183,42 @@ const checkShort_Interval_between_Answers = (Log: LogEntry) :void => {
   // Check for short intervals between submissions
   for (let i = 0; i < submissionTimestamps.length - 1; i++) {
     const interval = submissionTimestamps[i + 1] - submissionTimestamps[i];
-    if (interval < SHORT_INTERVAL_THRESHOLD) { // Define SHORT_INTERVAL_THRESHOLD according to your requirement
+    if (interval < SHORT_INTERVAL_THRESHOLD) {
       const suggestion: SuggestEntry = {
         Student_ID: Log.Student_ID,
         Name: Log.Name,
         Type: SuggestType.Short_Interval_between_Answers,
         Description: `Short interval between consecutive answers detected (${interval} milliseconds).`,
       };
-      uploadSuggestion(Log.Test_Session, suggestion)
-      }
+      uploadSuggestion(Log.Test_Session, suggestion);
+    }
   }
+};
 
-  return null;
-}
+const checkRapid_Response_Submission = (Log: LogEntry): void => {
+  let response_submission, starttime: number;
+  let RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
 
-const checkRapid_Response_Submission = (Log: LogEntry) :void => {
-// Example of Log
-// {
-//   "Name": "John Doe",
-//   "Activities": [
-//       {
-//           "Status": "Submit from password required",
-//           "Timestamp": "4/30/2024, 11:32 AM",
-//           "IP": "10.203.176.177"
-//       }
-//   ],
-//   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
-//   "Student_ID": "1"
-// }
-
-  const submissionTimestamps: number[] = [];
-  const RAPID_RESPONSE_THRESHOLD: number = -1
-
-  // Extract submission timestamps
   Log.Activities.forEach((activity) => {
-    if (activity.Status === 'Submit from password required') {
-      const timestamp = Date.parse(activity.Timestamp);
-      submissionTimestamps.push(timestamp);
+    if (activity.Status === 'Start test from cover page' || activity.Status === 'Test submission confirm') {
+      starttime = Date.parse(activity.Timestamp);
+    } else if (activity.Status === 'Test submission confirm') {
+      response_submission = Date.parse(activity.Timestamp) - starttime
     }
   });
 
   // Check for rapid response submission
-  if (submissionTimestamps.length >= 2) {
-    const firstSubmission = submissionTimestamps[0];
-    const lastSubmission = submissionTimestamps[submissionTimestamps.length - 1];
-    const duration = lastSubmission - firstSubmission;
-    if (duration < RAPID_RESPONSE_THRESHOLD) { // Define RAPID_RESPONSE_THRESHOLD according to your requirement
-      const suggestion: SuggestEntry = {
-        Student_ID: Log.Student_ID,
-        Name: Log.Name,
-        Type: SuggestType.Rapid_Response_Submission,
-        Description: `Rapid response submission detected (${duration} milliseconds between first and last submission).`,
-      };
-      uploadSuggestion(Log.Test_Session, suggestion)
-    }
+  if (response_submission && response_submission > RAPID_RESPONSE_THRESHOLD) {
+    const suggestion: SuggestEntry = {
+      Student_ID: Log.Student_ID,
+      Name: Log.Name,
+      Type: SuggestType.Rapid_Response_Submission,
+      Description: `Rapid response submission detected (${(response_submission / (1000 * 60)).toFixed(2)} minutes). Which is greater than ${(RAPID_RESPONSE_THRESHOLD / (1000 * 60)).toFixed(2)} minutes.`,
+    };
+    uploadSuggestion(Log.Test_Session, suggestion);
   }
-}
+};
+
 
 // ------------------------ Public Function ------------------------ //
 const uploadActivity = async (
