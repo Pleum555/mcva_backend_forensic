@@ -105,7 +105,7 @@ const cleanSuggestions = async (Test_Session: string): Promise<void> => {
       await s3.deleteObjects(deleteParams).promise();
     }
     
-    console.log(`Suggestion data for Test_Session ${Test_Session} cleaned successfully.`);
+    // console.log(`Suggestion data for Test_Session ${Test_Session} cleaned successfully.`);
   } catch (error) {
     console.error('Error cleaning suggestion data:', error);
     throw error;
