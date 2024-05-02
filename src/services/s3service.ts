@@ -24,10 +24,10 @@ interface LogEntry {
 }
 
 enum SuggestType {
-  DifferentIP,
-  Screen_Activity,
-  Short_Interval_between_Answers,
-  Rapid_Response_Submission,
+  DifferentIP = 'DifferentIP',
+  Screen_Activity = 'Screen_Activity',
+  Short_Interval_between_Answers = 'Short_Interval_between_Answers',
+  Rapid_Response_Submission = 'Rapid_Response_Submission',
 }
 
 interface SuggestEntry {
@@ -69,7 +69,7 @@ const getDataFromS3 = async(Key: string) :Promise<any> => {
   }
 }
 
-const uploadSuggestions = async(Test_Session: string, Suggest: SuggestEntry) : Promise<any> => {
+const uploadSuggestion = async(Test_Session: string, Suggest: SuggestEntry) : Promise<any> => {
   try{
   const params: S3.Types.ListObjectsV2Request = {
     Bucket: process.env.BUCKET_NAME ?? '',
@@ -78,12 +78,57 @@ const uploadSuggestions = async(Test_Session: string, Suggest: SuggestEntry) : P
   const data = await s3.listObjectsV2(params).promise();
   return await uploadToS3(`${Test_Session}/suggestions/suggest_${(data.KeyCount || 0) + 1}`, Suggest)
 
-} catch (error) {
-  throw error;
+  } catch (error) {
+    console.log(error)
+    throw error;
+  }
 }
-}
+
+const cleanSuggestions = async (Test_Session: string): Promise<void> => {
+  try {
+    const params: AWS.S3.Types.ListObjectsV2Request = {
+      Bucket: process.env.BUCKET_NAME ?? '',
+      Prefix: `${Test_Session}/suggestions/`,
+    };
+    const data = await s3.listObjectsV2(params).promise();
+    
+    if (data.Contents && data.Contents.length > 0) {
+      const objectsToDelete = data.Contents.map(obj => ({ Key: obj.Key }));
+      
+      const deleteParams: AWS.S3.Types.DeleteObjectsRequest = {
+        Bucket: process.env.BUCKET_NAME ?? '',
+        Delete: {
+          Objects: objectsToDelete,
+        },
+      };
+      
+      await s3.deleteObjects(deleteParams).promise();
+    }
+    
+    // console.log(`Suggestion data for Test_Session ${Test_Session} cleaned successfully.`);
+  } catch (error) {
+    console.error('Error cleaning suggestion data:', error);
+    throw error;
+  }
+};
+
 // ------------------------ Suggest Function ------------------------ //
-const checkDifferent_IP = (Log: LogEntry) :SuggestEntry | null => {
+const checkDifferent_IP = (Log: LogEntry) :void => {
+// Example of Log
+// {
+//   "Name": "John Doe",
+//   "Activities": [
+//       {
+//           "Status": "Submit from password required",
+//           "Timestamp": "4/30/2024, 11:32 AM",
+//           "IP": "10.203.176.177"
+//       }
+//   ],
+//   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
+//   "Student_ID": "1"
+// }
+
+  // Process Analyze
   const uniqueIPs: Set<string> = new Set();
   Log.Activities.forEach((activity) => {
     const ip = activity.IP;
@@ -92,20 +137,20 @@ const checkDifferent_IP = (Log: LogEntry) :SuggestEntry | null => {
     }
   });
   
+  // Check Fore Different IPs
   if(uniqueIPs.size > 1) {
-    let suggestions: SuggestEntry = {
+    let suggestion: SuggestEntry = {
       // Test_Session: Log.Test_Session,
       Student_ID: Log.Student_ID,
       Name: Log.Name,
       Type: SuggestType.DifferentIP,
       Description: `Student have ${uniqueIPs.size} IPs`,
     };
-    return suggestions; //Detect forensic
+    uploadSuggestion(Log.Test_Session, suggestion)
   }
-  return null;
 }
 
-const checkScreen_Activity = (Log: LogEntry) :SuggestEntry | null => {
+const checkScreen_Activity = (Log: LogEntry) :void => {
 // Example of Log
 // {
 //   "Name": "John Doe",
@@ -119,10 +164,39 @@ const checkScreen_Activity = (Log: LogEntry) :SuggestEntry | null => {
 //   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
 //   "Student_ID": "1"
 // }
-  return null;
+
+  // Process Analyze
+  const InActivePeriods : number[] = []
+  let When_InActive: number = -1; // Initialize to a default value
+  Log.Activities.forEach((activity) => {
+    const ip = activity.IP;
+    if( activity.Status  == 'Inactive Tab') {
+      When_InActive = Date.parse(activity.Timestamp);
+    }
+    if (activity.Status === 'Active Tab') {
+      if (When_InActive !== -1) { // Check if When_InActive is not the default value
+        const DifferentTime = Date.parse(activity.Timestamp) - When_InActive;
+        InActivePeriods.push(DifferentTime);
+        When_InActive = -1; // Reset When_InActive to the default value
+      }
+    }
+  });
+
+  // Check For Screen Activity
+  if(InActivePeriods.length > 0) {
+    let suggestion: SuggestEntry = {
+      // Test_Session: Log.Test_Session,
+      Student_ID: Log.Student_ID,
+      Name: Log.Name,
+      Type: SuggestType.DifferentIP,
+      Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} milliseconds`,
+
+    };
+    uploadSuggestion(Log.Test_Session, suggestion)
+  }
 }
 
-const checkShort_Interval_between_Answers = (Log: LogEntry) :SuggestEntry | null => {
+const checkShort_Interval_between_Answers = (Log: LogEntry) :void => {
 // Example of Log
 // {
 //   "Name": "John Doe",
@@ -136,10 +210,35 @@ const checkShort_Interval_between_Answers = (Log: LogEntry) :SuggestEntry | null
 //   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
 //   "Student_ID": "1"
 // }
+
+  const submissionTimestamps: number[] = [];
+  const SHORT_INTERVAL_THRESHOLD: number = -1
+  // Extract submission timestamps
+  Log.Activities.forEach((activity) => {
+    if (activity.Status === 'Submit from password required') {
+      const timestamp = Date.parse(activity.Timestamp);
+      submissionTimestamps.push(timestamp);
+    }
+  });
+
+  // Check for short intervals between submissions
+  for (let i = 0; i < submissionTimestamps.length - 1; i++) {
+    const interval = submissionTimestamps[i + 1] - submissionTimestamps[i];
+    if (interval < SHORT_INTERVAL_THRESHOLD) { // Define SHORT_INTERVAL_THRESHOLD according to your requirement
+      const suggestion: SuggestEntry = {
+        Student_ID: Log.Student_ID,
+        Name: Log.Name,
+        Type: SuggestType.Short_Interval_between_Answers,
+        Description: `Short interval between consecutive answers detected (${interval} milliseconds).`,
+      };
+      uploadSuggestion(Log.Test_Session, suggestion)
+      }
+  }
+
   return null;
 }
 
-const checkRapid_Response_Submission = (Log: LogEntry) :SuggestEntry | null => {
+const checkRapid_Response_Submission = (Log: LogEntry) :void => {
 // Example of Log
 // {
 //   "Name": "John Doe",
@@ -153,7 +252,33 @@ const checkRapid_Response_Submission = (Log: LogEntry) :SuggestEntry | null => {
 //   "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07",
 //   "Student_ID": "1"
 // }
-  return null;
+
+  const submissionTimestamps: number[] = [];
+  const RAPID_RESPONSE_THRESHOLD: number = -1
+
+  // Extract submission timestamps
+  Log.Activities.forEach((activity) => {
+    if (activity.Status === 'Submit from password required') {
+      const timestamp = Date.parse(activity.Timestamp);
+      submissionTimestamps.push(timestamp);
+    }
+  });
+
+  // Check for rapid response submission
+  if (submissionTimestamps.length >= 2) {
+    const firstSubmission = submissionTimestamps[0];
+    const lastSubmission = submissionTimestamps[submissionTimestamps.length - 1];
+    const duration = lastSubmission - firstSubmission;
+    if (duration < RAPID_RESPONSE_THRESHOLD) { // Define RAPID_RESPONSE_THRESHOLD according to your requirement
+      const suggestion: SuggestEntry = {
+        Student_ID: Log.Student_ID,
+        Name: Log.Name,
+        Type: SuggestType.Rapid_Response_Submission,
+        Description: `Rapid response submission detected (${duration} milliseconds between first and last submission).`,
+      };
+      uploadSuggestion(Log.Test_Session, suggestion)
+    }
+  }
 }
 
 // ------------------------ Public Function ------------------------ //
@@ -316,32 +441,58 @@ const getSuggestionsByTestSession = async (
 
 const analyzeForTestSession = async (Test_Session: string): Promise<any> => {
   try {
+    // Clean suggestion data for the test session
+    await cleanSuggestions(Test_Session);
+
     // Retrieve all activity logs for the given test session
     const activityLogs = await getActivitiesByTestSession(Test_Session);
+    
     // Check if activityLogs is undefined
     if (!activityLogs) {
       throw 'Activity logs not found.'
     }
 
     activityLogs.forEach((activityLog)=> {
-      //analyze forensic
-      const Different_IP = checkDifferent_IP(activityLog)
-      const Screen_Activity = checkScreen_Activity(activityLog)
-      const Short_Interval_between_Answers = checkShort_Interval_between_Answers(activityLog)
-      const Rapid_Response_Submission = checkRapid_Response_Submission(activityLog)
+      // Sort activities by Timestamp
+      activityLog.Activities.sort((a, b) => {
+        return Date.parse(a.Timestamp) - Date.parse(b.Timestamp);
+      });
 
-      //check forensic
-      if (Different_IP) uploadSuggestions(Test_Session, Different_IP);
-      if (Screen_Activity) uploadSuggestions(Test_Session, Screen_Activity);
-      if (Short_Interval_between_Answers) uploadSuggestions(Test_Session, Short_Interval_between_Answers);
-      if (Rapid_Response_Submission) uploadSuggestions(Test_Session, Rapid_Response_Submission);
+      try {
+        // Analyze forensic for each activity log
+        checkDifferent_IP(activityLog);
+      } catch (error) {
+        console.error('Error in checkDifferent_IP:', error);
+        // Handle error or continue to the next log
+      }
 
+      try {
+        checkScreen_Activity(activityLog);
+      } catch (error) {
+        console.error('Error in checkScreen_Activity:', error);
+        // Handle error or continue to the next log
+      }
+
+      try {
+        checkShort_Interval_between_Answers(activityLog);
+      } catch (error) {
+        console.error('Error in checkShort_Interval_between_Answers:', error);
+        // Handle error or continue to the next log
+      }
+
+      try {
+        checkRapid_Response_Submission(activityLog);
+      } catch (error) {
+        console.error('Error in checkRapid_Response_Submission:', error);
+        // Handle error or continue to the next log
+      }
     });
   } catch (error) {
     console.error(error);
     throw error;
   }
 };
+
 
 export const s3service = {
   uploadActivity, 
