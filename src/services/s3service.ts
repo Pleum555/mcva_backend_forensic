@@ -200,7 +200,7 @@ const checkRapid_Response_Submission = (Log: LogEntry): void => {
   let RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
 
   Log.Activities.forEach((activity) => {
-    if (activity.Status === 'Start test from cover page' || activity.Status === 'Test submission confirm') {
+    if (activity.Status === 'Start test from cover page') {
       starttime = Date.parse(activity.Timestamp);
     } else if (activity.Status === 'Test submission confirm') {
       response_submission = Date.parse(activity.Timestamp) - starttime
