@@ -169,31 +169,39 @@ const checkScreen_Activity = (Log: LogEntry) :void => {
 }
 
 const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
-  const submissionTimestamps: number[] = [];
-  const SHORT_INTERVAL_THRESHOLD: number = 10000; // 10 seconds threshold for short interval
-  const relevantStatuses = ['Submit', 'Finish Button', 'Save and Close']; // Relevant statuses for submissions
+  // Example of Log
+    // {
+    //     "Student_ID": "1",
+    //     "Name": "John Doe",
+    //     "Activities": [
+    //         {
+    //             "Status": "Submit from password required",
+    //             "Timestamp": "4/30/2024, 11:32 AM",
+    //             "IP": "10.203.176.177"
+    //         },
+    //         {
+    //             "Status": "Back from All parts page",
+    //             "Timestamp": "5/1/2024, 9:43 PM",
+    //             "IP": "192.168.1.19"
+    //         }
+    //     ],
+    //     "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07"
+    // }
 
-  Log.Activities.forEach((activity) => {
-    if (relevantStatuses.some((status) => activity.Status.includes(status))) {
-      const timestamp = Date.parse(activity.Timestamp);
-      submissionTimestamps.push(timestamp);
-    }
-  });
+  // Process Analyze
+
 
   // Check for short intervals between submissions
-  for (let i = 0; i < submissionTimestamps.length - 1; i++) {
-    const interval = submissionTimestamps[i + 1] - submissionTimestamps[i];
-    if (interval < SHORT_INTERVAL_THRESHOLD) {
-      const suggestion: SuggestEntry = {
-        Student_ID: Log.Student_ID,
-        Name: Log.Name,
-        Type: SuggestType.Short_Interval_between_Answers,
-        Description: `Short interval between consecutive answers detected (${interval} milliseconds).`,
-      };
-      uploadSuggestion(Log.Test_Session, suggestion);
-    }
+  if(1) {
+    const suggestion: SuggestEntry = {
+      Student_ID: Log.Student_ID,
+      Name: Log.Name,
+      Type: SuggestType.Short_Interval_between_Answers,
+      Description: `Test`,
+    };
+    uploadSuggestion(Log.Test_Session, suggestion);
   }
-};
+}
 
 const checkRapid_Response_Submission = (Log: LogEntry): void => {
   let response_submission, starttime: number;
