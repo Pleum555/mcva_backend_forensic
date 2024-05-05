@@ -49,12 +49,15 @@ s3Controller.get('/:Test_Session/activities/:Student_ID?', async (req: Request, 
   try {
     // Extract the fileName parameter from the request path
     const { Test_Session, Student_ID } = req.params;
+    const page = req.query.page? Number(req.query.page) : 1;
+    const limit = req.query.limit? Number(req.query.limit) : Number.MAX_SAFE_INTEGER;
+
     let fileContent;
 
     if( Student_ID !== undefined && Student_ID !== '' ){
       fileContent = await s3service.getActivitiesByTestSessionAndStudentID(Test_Session, Student_ID);
     }else{
-      fileContent = await s3service.getActivitiesByTestSession(Test_Session);
+      fileContent = await s3service.getActivitiesByTestSession(Test_Session, page, limit);
     }
 
     if (fileContent === undefined || Array.isArray(fileContent) && fileContent.length === 0) res.status(404).json({ success: false, error: 'File not found' });
@@ -71,9 +74,11 @@ s3Controller.get('/:Test_Session/suggestions', async (req: Request, res: Respons
   try {
     // Extract the fileName parameter from the request path
     const { Test_Session } = req.params;
+    const page = req.query.page? Number(req.query.page) : 1;
+    const limit = req.query.limit? Number(req.query.limit) : Number.MAX_SAFE_INTEGER;
     let fileContent;
 
-    fileContent = await s3service.getSuggestionsByTestSession(Test_Session);
+    fileContent = await s3service.getSuggestionsByTestSession(Test_Session, page, limit);
     
     if (fileContent === undefined || Array.isArray(fileContent) && fileContent.length === 0) res.status(404).json({ success: false, error: 'File not found' });
     else res.json(fileContent);

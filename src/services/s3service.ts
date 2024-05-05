@@ -39,6 +39,12 @@ interface SuggestEntry {
   Description: string,
 }
 
+interface PaginationResult<T> {
+  data: T[];
+  countAllPages: number;
+  currentPage: number;
+}
+
 // ------------------------ Private Function ------------------------ //
 const uploadToS3 = async( Key: string, LogData: any ) :Promise<any> => {
   try {
@@ -314,7 +320,13 @@ const getActivitiesByTestSessionAndStudentID = async (
 
 const getActivitiesByTestSession = async (
   Test_Session: string,
-): Promise<LogEntry[]> => {
+  pageNumber?: number,
+  pageSize?: number
+): Promise<PaginationResult<LogEntry>> => {
+  // If pageNumber and pageSize are not provided, set default values to retrieve all logs
+  if (pageNumber === undefined) pageNumber = 1;
+  if(pageSize === undefined) pageSize = Number.MAX_SAFE_INTEGER;
+
   const params: S3.Types.ListObjectsV2Request = {
     Bucket: process.env.BUCKET_NAME ?? '',
     Prefix: `${Test_Session}/activities/`,
@@ -326,10 +338,12 @@ const getActivitiesByTestSession = async (
 
     // console.log(keys)
     const logEntries: LogEntry[] = [];
+    let startIndex = (pageNumber - 1) * pageSize;
+    let endIndex = pageNumber * pageSize;
 
     // Loop through each key and retrieve the content
-    for (const key of keys) {
-      const [,,studentId] = key.split('/'); // Assuming the format is "Test_Session/Student_ID"
+    for (let i = startIndex; i < Math.min(endIndex, keys.length); i++) {
+      const [,,studentId] = keys[i].split('/'); // Assuming the format is "Test_Session/Student_ID"
       try {
         const logEntry = await getActivitiesByTestSessionAndStudentID(Test_Session, studentId);
 
@@ -338,11 +352,17 @@ const getActivitiesByTestSession = async (
         }
       } catch (readError) {
         // Handle errors if needed
-        console.error(`Error reading file for key ${key} from S3:`, readError);
+        console.error(`Error reading file for key ${keys[i]} from S3:`, readError);
       }
     }
 
-    return logEntries;
+    const countAllPages = Math.ceil(keys.length / pageSize);
+
+    return {
+      data: logEntries,
+      countAllPages,
+      currentPage: pageNumber
+    };
   } catch (error) {
     console.error('Error listing keys from S3:', error);
     throw error;
@@ -351,7 +371,13 @@ const getActivitiesByTestSession = async (
 
 const getSuggestionsByTestSession = async (
   Test_Session: string,
-): Promise<SuggestEntry[]> => {
+  pageNumber?: number,
+  pageSize?: number
+): Promise<PaginationResult<SuggestEntry>> => {
+  // If pageNumber and pageSize are not provided, set default values to retrieve all suggestions
+  if (pageNumber === undefined) pageNumber = 1;
+  if(pageSize === undefined) pageSize = Number.MAX_SAFE_INTEGER;
+
   const params: S3.Types.ListObjectsV2Request = {
     Bucket: process.env.BUCKET_NAME ?? '',
     Prefix: `${Test_Session}/suggestions/`,
@@ -363,10 +389,12 @@ const getSuggestionsByTestSession = async (
 
     // console.log(keys)
     const suggestEntries: SuggestEntry[] = [];
+    let startIndex = (pageNumber - 1) * pageSize;
+    let endIndex = pageNumber * pageSize;
 
     // Loop through each key and retrieve the content
-    for (const key of keys) {
-      const [,,file_name] = key.split('/'); // Assuming the format is "Test_Session/Student_ID"
+    for (let i = startIndex; i < Math.min(endIndex, keys.length); i++) {
+      const [,,file_name] = keys[i].split('/'); // Assuming the format is "Test_Session/Student_ID"
       try {
         const data = await getDataFromS3(`${Test_Session}/suggestions/${file_name}`);
         const jsonString = data.Body?.toString('utf-8');
@@ -375,11 +403,17 @@ const getSuggestionsByTestSession = async (
         }
       } catch (readError) {
         // Handle errors if needed
-        console.error(`Error reading file for key ${key} from S3:`, readError);
+        console.error(`Error reading file for key ${keys[i]} from S3:`, readError);
       }
     }
 
-    return suggestEntries;
+    const countAllPages = Math.ceil(keys.length / pageSize);
+
+    return {
+      data: suggestEntries,
+      countAllPages,
+      currentPage: pageNumber
+    };
   } catch (error) {
     console.error('Error listing keys from S3:', error);
     throw error;
@@ -399,7 +433,7 @@ const analyzeForTestSession = async (Test_Session: string): Promise<any> => {
       throw 'Activity logs not found.'
     }
 
-    activityLogs.forEach((activityLog)=> {
+    activityLogs.data.forEach((activityLog)=> {
       // Sort activities by Timestamp
       activityLog.Activities.sort((a, b) => {
         return Date.parse(a.Timestamp) - Date.parse(b.Timestamp);
