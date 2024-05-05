@@ -166,7 +166,7 @@ const checkScreen_Activity = (Log: LogEntry) :void => {
       // Test_Session: Log.Test_Session,
       Student_ID: Log.Student_ID,
       Name: Log.Name,
-      Type: SuggestType.DifferentIP,
+      Type: SuggestType.Screen_Activity,
       Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} seconds`,
 
     };
@@ -399,7 +399,7 @@ const getSuggestionsByTestSession = async (
         const data = await getDataFromS3(`${Test_Session}/suggestions/${file_name}`);
         const jsonString = data.Body?.toString('utf-8');
         if (jsonString) {
-          suggestEntries.push(JSON.parse(jsonString));
+          suggestEntries.push({Test_Session,...JSON.parse(jsonString)});
         }
       } catch (readError) {
         // Handle errors if needed
