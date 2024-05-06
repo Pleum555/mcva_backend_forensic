@@ -76,14 +76,14 @@ const getDataFromS3 = async(Key: string) :Promise<any> => {
   }
 }
 
-const uploadSuggestion = async(Test_Session: string, Suggest: SuggestEntry) : Promise<any> => {
+const uploadSuggestion = async(Test_Session: string, Student_ID, Suggest: SuggestEntry) : Promise<any> => {
   try{
   const params: S3.Types.ListObjectsV2Request = {
     Bucket: process.env.BUCKET_NAME ?? '',
-    Prefix: `${Test_Session}/suggestions/`,
+    Prefix: `${Test_Session}/suggestions/${Student_ID}/`,
   };
   const data = await s3.listObjectsV2(params).promise();
-  return await uploadToS3(`${Test_Session}/suggestions/suggest_${(data.KeyCount || 0) + 1}`, Suggest)
+  return await uploadToS3(`${Test_Session}/suggestions/${Student_ID}/suggest_${(data.KeyCount || 0) + 1}`, Suggest)
 
   } catch (error) {
     console.log(error)
@@ -91,11 +91,11 @@ const uploadSuggestion = async(Test_Session: string, Suggest: SuggestEntry) : Pr
   }
 }
 
-const cleanSuggestions = async (Test_Session: string): Promise<void> => {
+const cleanSuggestions = async (Test_Session: string, Student_ID: string): Promise<void> => {
   try {
     const params: AWS.S3.Types.ListObjectsV2Request = {
       Bucket: process.env.BUCKET_NAME ?? '',
-      Prefix: `${Test_Session}/suggestions/`,
+      Prefix: `${Test_Session}/suggestions/${Student_ID}/`,
     };
     const data = await s3.listObjectsV2(params).promise();
     
@@ -139,7 +139,7 @@ const checkDifferent_IP = (Log: LogEntry) :void => {
       Type: SuggestType.DifferentIP,
       Description: `Student have ${uniqueIPs.size} IPs`,
     };
-    uploadSuggestion(Log.Test_Session, suggestion)
+    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion)
   }
 }
 
@@ -170,11 +170,11 @@ const checkScreen_Activity = (Log: LogEntry) :void => {
       Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} seconds`,
 
     };
-    uploadSuggestion(Log.Test_Session, suggestion)
+    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion)
   }
 }
 
-const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
+const checkShort_Interval_between_Answers1 = (Log: LogEntry): void => {
   // Example of Log
     // {
     //     "Student_ID": "1",
@@ -195,7 +195,39 @@ const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
     // }
 
   // Process Analyze
+  const shortIntervals: number[] = []; // Array to store short intervals
 
+  let startQuestionTime: number | undefined;
+
+  // Process Analyze
+  Log.Activities.forEach((activity, index) => {
+    const status = activity.Status;
+
+    // Check for start of a question
+    if (
+      status.startsWith('Back to prev question') ||
+      status.startsWith('Go to next question') ||
+      status.startsWith('Back to first question') ||
+      status.startsWith('Next to last question') ||
+      status.startsWith('Go to question')
+    ) {
+      startQuestionTime = Date.parse(activity.Timestamp);
+    }
+
+    // Check for end of a question
+    if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
+      if (startQuestionTime !== undefined) {
+        const endQuestionTime = Date.parse(activity.Timestamp);
+        const timeDifference = (endQuestionTime - startQuestionTime) / 1000; // Convert to seconds
+
+        // If time difference is less than 5 seconds, store it
+        if (timeDifference < 5) {
+          shortIntervals.push(timeDifference);
+        }
+        startQuestionTime = undefined; // Reset startQuestionTime
+      }
+    }
+  });
 
   // Check for short intervals between submissions
   if(1) {
@@ -205,9 +237,54 @@ const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
       Type: SuggestType.Short_Interval_between_Answers,
       Description: `Test`,
     };
-    uploadSuggestion(Log.Test_Session, suggestion);
+    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
 }
+
+const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
+  const shortIntervals: { question: string, interval: number }[] = []; // Array to store short intervals with question numbers
+
+  let startQuestionTime: number | undefined;
+  let currentQuestion: string | undefined;
+
+  // Process Analyze
+  Log.Activities.forEach((activity, index) => {
+    const status = activity.Status;
+
+    // Check for start of a question
+    if (status.startsWith('Back to prev question') || status.startsWith('Go to next question') || status.startsWith('Back to first question') || status.startsWith('Next to last question') || status.startsWith('Go to question')) {
+      startQuestionTime = Date.parse(activity.Timestamp);
+      currentQuestion = status.match(/\(([^)]+)\)/)?.[1]; // Extract question number from status
+    }
+
+    // Check for end of a question
+    if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
+      if (startQuestionTime !== undefined && currentQuestion !== undefined) {
+        const endQuestionTime = Date.parse(activity.Timestamp);
+        const timeDifference = (endQuestionTime - startQuestionTime) / 1000; // Convert to seconds
+
+        // If time difference is less than 5 seconds, store it with question number
+        if (timeDifference < 5) {
+          shortIntervals.push({ question: currentQuestion, interval: timeDifference });
+        }
+        startQuestionTime = undefined; // Reset startQuestionTime
+        currentQuestion = undefined; // Reset currentQuestion
+      }
+    }
+  });
+
+  // Check for short intervals between answers
+  if (shortIntervals.length > 0) {
+    const intervalsDescription = shortIntervals.map(({ question, interval }) => `Question ${question}: ${interval} seconds`).join(', ');
+    const suggestion: SuggestEntry = {
+      Student_ID: Log.Student_ID,
+      Name: Log.Name,
+      Type: SuggestType.Short_Interval_between_Answers,
+      Description: `Detected short intervals between answers: ${intervalsDescription}`,
+    };
+    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
+  }
+};
 
 const checkRapid_Response_Submission = (Log: LogEntry): void => {
   let response_submission, starttime: number;
@@ -229,7 +306,7 @@ const checkRapid_Response_Submission = (Log: LogEntry): void => {
       Type: SuggestType.Rapid_Response_Submission,
       Description: `Rapid response submission detected (${(response_submission / (1000 * 60)).toFixed(2)} minutes). Which is greater than ${(RAPID_RESPONSE_THRESHOLD / (1000 * 60)).toFixed(2)} minutes.`,
     };
-    uploadSuggestion(Log.Test_Session, suggestion);
+    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
 };
 
@@ -371,6 +448,7 @@ const getActivitiesByTestSession = async (
 
 const getSuggestionsByTestSession = async (
   Test_Session: string,
+  // Student_ID: string,
   pageNumber?: number,
   pageSize?: number
 ): Promise<PaginationResult<SuggestEntry>> => {
@@ -394,9 +472,9 @@ const getSuggestionsByTestSession = async (
 
     // Loop through each key and retrieve the content
     for (let i = startIndex; i < Math.min(endIndex, keys.length); i++) {
-      const [,,file_name] = keys[i].split('/'); // Assuming the format is "Test_Session/Student_ID"
+      const [,,Student_ID,file_name] = keys[i].split('/'); // Assuming the format is "Test_Session/Student_ID"
       try {
-        const data = await getDataFromS3(`${Test_Session}/suggestions/${file_name}`);
+        const data = await getDataFromS3(`${Test_Session}/suggestions/${Student_ID}/${file_name}`);
         const jsonString = data.Body?.toString('utf-8');
         if (jsonString) {
           suggestEntries.push({Test_Session,...JSON.parse(jsonString)});
@@ -420,54 +498,54 @@ const getSuggestionsByTestSession = async (
   }
 };
 
-const analyzeForTestSession = async (Test_Session: string): Promise<any> => {
+const analyze = async (Test_Session: string, Student_ID: string,): Promise<any> => {
   try {
     // Clean suggestion data for the test session
-    await cleanSuggestions(Test_Session);
+    await cleanSuggestions(Test_Session, Student_ID);
 
     // Retrieve all activity logs for the given test session
-    const activityLogs = await getActivitiesByTestSession(Test_Session);
+    const activityLog = await getActivitiesByTestSessionAndStudentID(Test_Session, Student_ID);
     
     // Check if activityLogs is undefined
-    if (!activityLogs) {
+    if (!activityLog) {
       throw 'Activity logs not found.'
     }
 
-    activityLogs.data.forEach((activityLog)=> {
-      // Sort activities by Timestamp
-      activityLog.Activities.sort((a, b) => {
-        return Date.parse(a.Timestamp) - Date.parse(b.Timestamp);
-      });
-
-      try {
-        // Analyze forensic for each activity log
-        checkDifferent_IP(activityLog);
-      } catch (error) {
-        console.error('Error in checkDifferent_IP:', error);
-        // Handle error or continue to the next log
-      }
-
-      try {
-        checkScreen_Activity(activityLog);
-      } catch (error) {
-        console.error('Error in checkScreen_Activity:', error);
-        // Handle error or continue to the next log
-      }
-
-      try {
-        checkShort_Interval_between_Answers(activityLog);
-      } catch (error) {
-        console.error('Error in checkShort_Interval_between_Answers:', error);
-        // Handle error or continue to the next log
-      }
-
-      try {
-        checkRapid_Response_Submission(activityLog);
-      } catch (error) {
-        console.error('Error in checkRapid_Response_Submission:', error);
-        // Handle error or continue to the next log
-      }
+    
+    // Sort activities by Timestamp
+    activityLog.Activities.sort((a, b) => {
+      return Date.parse(a.Timestamp) - Date.parse(b.Timestamp);
     });
+
+    try {
+      // Analyze forensic for each activity log
+      checkDifferent_IP(activityLog);
+    } catch (error) {
+      console.error('Error in checkDifferent_IP:', error);
+      // Handle error or continue to the next log
+    }
+
+    try {
+      checkScreen_Activity(activityLog);
+    } catch (error) {
+      console.error('Error in checkScreen_Activity:', error);
+      // Handle error or continue to the next log
+    }
+
+    try {
+      checkShort_Interval_between_Answers(activityLog);
+    } catch (error) {
+      console.error('Error in checkShort_Interval_between_Answers:', error);
+      // Handle error or continue to the next log
+    }
+
+    try {
+      checkRapid_Response_Submission(activityLog);
+    } catch (error) {
+      console.error('Error in checkRapid_Response_Submission:', error);
+      // Handle error or continue to the next log
+    }
+    
   } catch (error) {
     console.error(error);
     throw error;
@@ -480,5 +558,5 @@ export const s3service = {
   getActivitiesByTestSessionAndStudentID,
   getActivitiesByTestSession,
   getSuggestionsByTestSession,
-  analyzeForTestSession,
+  analyze,
 }

@@ -90,12 +90,12 @@ s3Controller.get('/:Test_Session/suggestions', async (req: Request, res: Respons
 });
 
 // GET request to analyze IPs in a test session
-s3Controller.get('/:Test_Session/analyze', async (req: Request, res: Response) => {
+s3Controller.get('/:Test_Session/analyze/:Student_ID', async (req: Request, res: Response) => {
   try {
-    const { Test_Session } = req.params;
+    const { Test_Session, Student_ID } = req.params;
 
     // Retrieve all activity logs for the given test session
-    const url = await s3service.analyzeForTestSession(Test_Session);
+    const url = await s3service.analyze(Test_Session, Student_ID);
     
     // Respond with the S3 URL after successful analyze
     return res.json({ success: true, url });
