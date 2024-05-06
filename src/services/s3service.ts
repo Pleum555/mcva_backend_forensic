@@ -2,7 +2,6 @@
 import { S3 } from 'aws-sdk';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
-import { float } from 'aws-sdk/clients/cloudfront';
 
 dotenv.config();
 
@@ -120,196 +119,211 @@ const cleanSuggestions = async (Test_Session: string, Student_ID: string): Promi
 };
 
 // ------------------------ Suggest Function ------------------------ //
-const checkDifferent_IP = (Log: LogEntry) :void => {
+const checkDifferent_IP = async (Log: LogEntry): Promise<any> => {
   // Process Analyze
   const uniqueIPs: Set<string> = new Set();
   Log.Activities.forEach((activity) => {
     const ip = activity.IP;
-    if (ip && ip !== 'N/A') {
+    if (ip) {
       uniqueIPs.add(ip);
     }
   });
   
   // Check Fore Different IPs
   if(uniqueIPs.size > 1) {
-    let suggestion: SuggestEntry = {
-      // Test_Session: Log.Test_Session,
-      Student_ID: Log.Student_ID,
-      Name: Log.Name,
-      Type: SuggestType.DifferentIP,
-      Description: `Student have ${uniqueIPs.size} IPs`,
-    };
-    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion)
+  let ipsDescription = ''; // Initialize description for IPs
+  uniqueIPs.forEach((ip) => {
+    ipsDescription += `${ip}, `;
+  });
+  ipsDescription = ipsDescription.slice(0, -2); // Remove the last comma and space
+  
+  let suggestion: SuggestEntry = {
+    Test_Session: Log.Test_Session,
+    Student_ID: Log.Student_ID,
+    Name: Log.Name,
+    Type: SuggestType.DifferentIP,
+    Description: `Student have ${uniqueIPs.size} IPs: ${ipsDescription}.`,
+  };
+  await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
 }
 
-const checkScreen_Activity = (Log: LogEntry) :void => {
+const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
   // Process Analyze
-  const InActivePeriods : number[] = []
+  const InActivePeriods: string[] = [];
   let When_InActive: number = -1; // Initialize to a default value
   Log.Activities.forEach((activity) => {
-    if( activity.Status  == 'Inactive Tab') {
+    if (activity.Status == 'Inactive tab') {
       When_InActive = Date.parse(activity.Timestamp);
     }
-    if (activity.Status === 'Active Tab') {
+    if (activity.Status === 'Active tab') {
       if (When_InActive !== -1) { // Check if When_InActive is not the default value
         const DifferentTime: number = parseFloat(((Date.parse(activity.Timestamp) - When_InActive) / 1000).toFixed(2));
-        InActivePeriods.push(DifferentTime);
+        if (DifferentTime >= 60) {
+          const hours = Math.floor(DifferentTime / 3600);
+          const minutes = Math.floor((DifferentTime % 3600) / 60);
+          const seconds = Math.floor(DifferentTime % 60);
+          InActivePeriods.push(`${hours}h ${minutes}m ${seconds}s`);
+        } else {
+          InActivePeriods.push(`${DifferentTime}s`);
+        }
         When_InActive = -1; // Reset When_InActive to the default value
       }
     }
   });
 
   // Check For Screen Activity
-  if(InActivePeriods.length >= 1) {
+  if (InActivePeriods.length >= 1) {
     let suggestion: SuggestEntry = {
-      // Test_Session: Log.Test_Session,
+      Test_Session: Log.Test_Session,
       Student_ID: Log.Student_ID,
       Name: Log.Name,
       Type: SuggestType.Screen_Activity,
-      Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')} seconds`,
-
+      Description: `Student experienced ${InActivePeriods.length} periods of inactivity with durations: ${InActivePeriods.join(', ')}.`,
     };
-    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion)
+    await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
-}
+};
 
-const checkShort_Interval_between_Answers1 = (Log: LogEntry): void => {
-  // Example of Log
-    // {
-    //     "Student_ID": "1",
-    //     "Name": "John Doe",
-    //     "Activities": [
-    //         {
-    //             "Status": "Submit from password required",
-    //             "Timestamp": "4/30/2024, 11:32 AM",
-    //             "IP": "10.203.176.177"
-    //         },
-    //         {
-    //             "Status": "Back from All parts page",
-    //             "Timestamp": "5/1/2024, 9:43 PM",
-    //             "IP": "192.168.1.19"
-    //         }
-    //     ],
-    //     "Test_Session": "cef28a1f-166d-4b81-b2f0-8e7fd2af7b07"
-    // }
-
-  // Process Analyze
-  const shortIntervals: number[] = []; // Array to store short intervals
-
-  let startQuestionTime: number | undefined;
-
-  // Process Analyze
-  Log.Activities.forEach((activity, index) => {
-    const status = activity.Status;
-
-    // Check for start of a question
-    if (
-      status.startsWith('Back to prev question') ||
-      status.startsWith('Go to next question') ||
-      status.startsWith('Back to first question') ||
-      status.startsWith('Next to last question') ||
-      status.startsWith('Go to question')
-    ) {
-      startQuestionTime = Date.parse(activity.Timestamp);
-    }
-
-    // Check for end of a question
-    if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
-      if (startQuestionTime !== undefined) {
-        const endQuestionTime = Date.parse(activity.Timestamp);
-        const timeDifference = (endQuestionTime - startQuestionTime) / 1000; // Convert to seconds
-
-        // If time difference is less than 5 seconds, store it
-        if (timeDifference < 5) {
-          shortIntervals.push(timeDifference);
-        }
-        startQuestionTime = undefined; // Reset startQuestionTime
-      }
-    }
-  });
-
-  // Check for short intervals between submissions
-  if(1) {
-    const suggestion: SuggestEntry = {
-      Student_ID: Log.Student_ID,
-      Name: Log.Name,
-      Type: SuggestType.Short_Interval_between_Answers,
-      Description: `Test`,
-    };
-    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
-  }
-}
-
-const checkShort_Interval_between_Answers = (Log: LogEntry): void => {
-  const shortIntervals: { question: string, interval: number }[] = []; // Array to store short intervals with question numbers
+const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> => {
+  const shortIntervals: { part: string, question: string, interval: number }[] = []; // Array to store short intervals with part titles and question numbers
 
   let startQuestionTime: number | undefined;
   let currentQuestion: string | undefined;
+  let currentPart: string | undefined;
 
   // Process Analyze
   Log.Activities.forEach((activity, index) => {
     const status = activity.Status;
 
     // Check for start of a question
-    if (status.startsWith('Back to prev question') || status.startsWith('Go to next question') || status.startsWith('Back to first question') || status.startsWith('Next to last question') || status.startsWith('Go to question')) {
-      startQuestionTime = Date.parse(activity.Timestamp);
-      currentQuestion = status.match(/\(([^)]+)\)/)?.[1]; // Extract question number from status
+    if (status.startsWith('Go to question')) {
+      const questionMatch = status.match(/Go to question (\d+)/); // Extract question number from status
+      if (questionMatch) {
+        currentQuestion = questionMatch[1]; // Extracted question number
+        startQuestionTime = Date.parse(activity.Timestamp);
+      }
     }
-
-    // Check for end of a question
-    if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
+    // Check for start of a part
+    else if (status.startsWith('Go to')) {
+      const partMatch = status.match(/Go to (.+)/); // Extract part title from status
+      if (partMatch) {
+        currentPart = partMatch[1]; // Extracted part title
+        currentQuestion = '1';
+        startQuestionTime = Date.parse(activity.Timestamp)
+      }
+    }
+    // Check for change question
+    else if (
+      status.startsWith('Back to prev question') ||
+      status.startsWith('Go to next question') ||
+      status.startsWith('Back to first question') ||
+      status.startsWith('Next to last question')
+    ) {
       if (startQuestionTime !== undefined && currentQuestion !== undefined) {
         const endQuestionTime = Date.parse(activity.Timestamp);
-        const timeDifference = (endQuestionTime - startQuestionTime) / 1000; // Convert to seconds
+        const timeDifference = (endQuestionTime - startQuestionTime);
 
-        // If time difference is less than 5 seconds, store it with question number
-        if (timeDifference < 5) {
-          shortIntervals.push({ question: currentQuestion, interval: timeDifference });
+        // Check if the currentPart and currentQuestion already exist in shortIntervals
+        const existingIndex = shortIntervals.findIndex(item => item.part === currentPart && item.question === currentQuestion);
+
+        if (existingIndex !== -1) {
+          // If exists, add the timeDifference to the existing interval
+          shortIntervals[existingIndex].interval += timeDifference;
+        } else {
+          // If doesn't exist, push it with the timeDifference
+          shortIntervals.push({ part: currentPart, question: currentQuestion, interval: timeDifference });
         }
+
+        startQuestionTime = Date.parse(activity.Timestamp); // Reset startQuestionTime
+
+        // Increment or decrement currentQuestion based on the status
+        if (status.startsWith('Back to prev question')) {
+          currentQuestion = (parseInt(currentQuestion) - 1).toString(); // Decrement currentQuestion
+        } else if (status.startsWith('Go to next question')) {
+          currentQuestion = (parseInt(currentQuestion) + 1).toString(); // Increment currentQuestion
+        } else if (status.startsWith('Back to first question')) {
+          currentQuestion = '1'; // Set currentQuestion to first question
+        } else if (status.startsWith('Next to last question')) {
+          const nextToLastQuestionMatch = status.match(/Next to last question (\d+)/);
+          if (nextToLastQuestionMatch) {
+            currentQuestion = nextToLastQuestionMatch[1];
+          }
+        }
+      }
+    }
+    // Check for end of a question
+    else if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
+      if (startQuestionTime !== undefined && currentQuestion !== undefined) {
+        const endQuestionTime = Date.parse(activity.Timestamp);
+        const timeDifference = (endQuestionTime - startQuestionTime);
+
+        // Check if the currentPart and currentQuestion already exist in shortIntervals
+        const existingIndex = shortIntervals.findIndex(item => item.part === currentPart && item.question === currentQuestion);
+
+        if (existingIndex !== -1) {
+          // If exists, add the timeDifference to the existing interval
+          shortIntervals[existingIndex].interval += timeDifference;
+        } else {
+          // If doesn't exist, push it with the timeDifference
+          shortIntervals.push({ part: currentPart, question: currentQuestion, interval: timeDifference });
+        }
+
         startQuestionTime = undefined; // Reset startQuestionTime
         currentQuestion = undefined; // Reset currentQuestion
+        currentPart = undefined; // Reset currentPart
       }
     }
   });
 
   // Check for short intervals between answers
-  if (shortIntervals.length > 0) {
-    const intervalsDescription = shortIntervals.map(({ question, interval }) => `Question ${question}: ${interval} seconds`).join(', ');
+  const SHORT_INTERVAL_THRESHOLD = 5 * 1000; // Threshold for short intervals in milliseconds
+  const shortIntervalsFiltered = shortIntervals.filter(({ interval }) => interval < SHORT_INTERVAL_THRESHOLD); // Filter short intervals
+
+  if (shortIntervalsFiltered.length > 0) {
+    
+
+    const shortIntervalsDescription = shortIntervalsFiltered
+      .map(({ part, question, interval }) => `${part}, Question ${question}: ${(interval / 1000).toFixed(2)} seconds`)
+      .join(', ');
+
     const suggestion: SuggestEntry = {
       Student_ID: Log.Student_ID,
       Name: Log.Name,
       Type: SuggestType.Short_Interval_between_Answers,
-      Description: `Detected short intervals between answers: ${intervalsDescription}`,
+      Description: `Detected ${shortIntervalsFiltered.length} short intervals between answers (less than ${SHORT_INTERVAL_THRESHOLD / 1000} seconds): ${shortIntervalsDescription}.`,
     };
-    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
+    await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
 };
 
-const checkRapid_Response_Submission = (Log: LogEntry): void => {
+const checkRapid_Response_Submission = async (Log: LogEntry): Promise<any> => {
   let response_submission, starttime: number;
-  let RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
 
   Log.Activities.forEach((activity) => {
     if (activity.Status === 'Start test from cover page') {
       starttime = Date.parse(activity.Timestamp);
     } else if (activity.Status === 'Test submission confirm') {
-      response_submission = Date.parse(activity.Timestamp) - starttime
+      response_submission = Date.parse(activity.Timestamp) - starttime;
     }
   });
 
   // Check for rapid response submission
-  if (response_submission && response_submission > RAPID_RESPONSE_THRESHOLD) {
+  let RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
+  if (response_submission && response_submission < RAPID_RESPONSE_THRESHOLD) {
+    const seconds = Math.floor((response_submission / 1000) % 60);
+    const minutes = Math.floor((response_submission / (1000 * 60)) % 60);
+    const hours = Math.floor(response_submission / (1000 * 60 * 60));
+    
     const suggestion: SuggestEntry = {
       Student_ID: Log.Student_ID,
       Name: Log.Name,
       Type: SuggestType.Rapid_Response_Submission,
-      Description: `Rapid response submission detected (${(response_submission / (1000 * 60)).toFixed(2)} minutes). Which is greater than ${(RAPID_RESPONSE_THRESHOLD / (1000 * 60)).toFixed(2)} minutes.`,
+      Description: `Rapid response submission detected (less than ${Math.floor(RAPID_RESPONSE_THRESHOLD / (1000 * 60))} minutes): ${hours}h ${minutes}m ${seconds}s.`,
     };
-    uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
+    await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
   }
 };
-
 
 // ------------------------ Public Function ------------------------ //
 const uploadActivity = async (
@@ -519,28 +533,28 @@ const analyze = async (Test_Session: string, Student_ID: string,): Promise<any> 
 
     try {
       // Analyze forensic for each activity log
-      checkDifferent_IP(activityLog);
+      await checkDifferent_IP(activityLog);
     } catch (error) {
       console.error('Error in checkDifferent_IP:', error);
       // Handle error or continue to the next log
     }
 
     try {
-      checkScreen_Activity(activityLog);
+      await checkScreen_Activity(activityLog);
     } catch (error) {
       console.error('Error in checkScreen_Activity:', error);
       // Handle error or continue to the next log
     }
 
     try {
-      checkShort_Interval_between_Answers(activityLog);
+      await checkShort_Interval_between_Answers(activityLog);
     } catch (error) {
       console.error('Error in checkShort_Interval_between_Answers:', error);
       // Handle error or continue to the next log
     }
 
     try {
-      checkRapid_Response_Submission(activityLog);
+      await checkRapid_Response_Submission(activityLog);
     } catch (error) {
       console.error('Error in checkRapid_Response_Submission:', error);
       // Handle error or continue to the next log
@@ -551,7 +565,6 @@ const analyze = async (Test_Session: string, Student_ID: string,): Promise<any> 
     throw error;
   }
 };
-
 
 export const s3service = {
   uploadActivity, 
