@@ -184,6 +184,8 @@ const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
     }
   });
 
+  console.log(InActivePeriods)
+
   // Check For Screen Activity
   if (InActivePeriods.length >= 1) {
     let suggestion: SuggestEntry = {
@@ -288,6 +290,8 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
     }
   });
 
+  console.log(shortIntervals)
+
   // Check for short intervals between answers
   const SHORT_INTERVAL_THRESHOLD = 5 * 1000; // Threshold for short intervals in milliseconds
   const shortIntervalsFiltered = shortIntervals.filter(({ interval }) => interval < SHORT_INTERVAL_THRESHOLD); // Filter short intervals
@@ -310,32 +314,48 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
 };
 
 const checkRapid_Response_Submission = async (Log: LogEntry): Promise<any> => {
-  let response_submission, starttime: number;
+  let starttime: Date | undefined;
+  let response_submission: number | undefined;
 
   Log.Activities.forEach((activity) => {
     if (activity.Status === 'Start test from cover page') {
-      starttime = Date.parse(activity.Timestamp);
-    } else if (activity.Status === 'Test submission confirm') {
-      response_submission = Date.parse(activity.Timestamp) - starttime;
+      starttime = new Date(activity.Timestamp);
+      console.log('starttime = ', starttime)
+    } else if (activity.Status === 'Test submission confirm' && starttime) {
+      response_submission = Date.parse(activity.Timestamp) - starttime.getTime();
+      console.log('response_submission = ', response_submission)
     }
   });
 
-  // Check for rapid response submission
-  let RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
-  if (response_submission && response_submission < RAPID_RESPONSE_THRESHOLD) {
-    const seconds = Math.floor((response_submission / 1000) % 60);
-    const minutes = Math.floor((response_submission / (1000 * 60)) % 60);
-    const hours = Math.floor(response_submission / (1000 * 60 * 60));
-    
-    const suggestion: SuggestEntry = {
-      Student_ID: Log.Student_ID,
-      Name: Log.Name,
-      Type: SuggestType.Rapid_Response_Submission,
-      Description: `Rapid response submission detected (less than ${Math.floor(RAPID_RESPONSE_THRESHOLD / (1000 * 60))} minutes): ${hours}h ${minutes}m ${seconds}s.`,
-    };
-    await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
+  console.log(response_submission)
+
+  if (response_submission !== undefined) {
+    // Check for rapid response submission
+    const RAPID_RESPONSE_THRESHOLD: number = 30 * 60 * 1000; // 30 minutes threshold in milliseconds
+
+    if (response_submission < RAPID_RESPONSE_THRESHOLD) {
+      const seconds = Math.floor((response_submission / 1000) % 60);
+      const minutes = Math.floor((response_submission / (1000 * 60)) % 60);
+      const hours = Math.floor(response_submission / (1000 * 60 * 60));
+      
+      const suggestion: SuggestEntry = {
+        Student_ID: Log.Student_ID,
+        Name: Log.Name,
+        Type: SuggestType.Rapid_Response_Submission,
+        Description: `Rapid response submission detected (less than ${Math.floor(RAPID_RESPONSE_THRESHOLD / (1000 * 60))} minutes): ${hours}h ${minutes}m ${seconds}s.`,
+      };
+      try {
+        await uploadSuggestion(Log.Test_Session, Log.Student_ID, suggestion);
+      } catch (error) {
+        console.error("Error uploading suggestion:", error);
+        // Handle error accordingly
+      }
+    }
+  } else {
+    console.warn("No test submission confirmation found or missing start time.");
   }
 };
+
 
 // ------------------------ Public Function ------------------------ //
 const uploadActivity = async (
@@ -542,6 +562,8 @@ const analyze = async (Test_Session: string, Student_ID: string,): Promise<any> 
     activityLog.Activities.sort((a, b) => {
       return Date.parse(a.Timestamp) - Date.parse(b.Timestamp);
     });
+
+    console.log(activityLog.Activities)
 
     try {
       // Analyze forensic for each activity log
