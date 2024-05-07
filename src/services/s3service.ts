@@ -152,23 +152,35 @@ const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
   // Process Analyze
   const InActivePeriods: string[] = [];
   let When_InActive: number = -1; // Initialize to a default value
-  Log.Activities.forEach((activity) => {
-    if (activity.Status == 'Inactive tab') {
-      When_InActive = Date.parse(activity.Timestamp);
+  let isActiveTest = false; // Flag to track if the test is active
+
+  Log.Activities.forEach((activity, index) => {
+    if (activity.Status === 'Start test from cover page') {
+      isActiveTest = true; // Set test active when starting the test
     }
-    if (activity.Status === 'Active tab') {
-      if (When_InActive !== -1) { // Check if When_InActive is not the default value
-        const DifferentTime: number = parseFloat(((Date.parse(activity.Timestamp) - When_InActive) / 1000).toFixed(2));
-        if (DifferentTime >= 60) {
-          const hours = Math.floor(DifferentTime / 3600);
-          const minutes = Math.floor((DifferentTime % 3600) / 60);
-          const seconds = Math.floor(DifferentTime % 60);
-          InActivePeriods.push(`${hours}h ${minutes}m ${seconds}s`);
-        } else {
-          InActivePeriods.push(`${DifferentTime}s`);
-        }
-        When_InActive = -1; // Reset When_InActive to the default value
+
+    if (isActiveTest) {
+      if (activity.Status === 'Inactive tab') {
+        When_InActive = Date.parse(activity.Timestamp);
       }
+      if (activity.Status === 'Active tab') {
+        if (When_InActive !== -1) { // Check if When_InActive is not the default value
+          const DifferentTime: number = parseFloat(((Date.parse(activity.Timestamp) - When_InActive) / 1000).toFixed(2));
+          if (DifferentTime >= 60) {
+            const hours = Math.floor(DifferentTime / 3600);
+            const minutes = Math.floor((DifferentTime % 3600) / 60);
+            const seconds = Math.floor(DifferentTime % 60);
+            InActivePeriods.push(`${hours}h ${minutes}m ${seconds}s`);
+          } else {
+            InActivePeriods.push(`${DifferentTime}s`);
+          }
+          When_InActive = -1; // Reset When_InActive to the default value
+        }
+      }
+    }
+
+    if (activity.Status === 'Test submission confirm') {
+      isActiveTest = false; // Set test inactive after test submission confirm
     }
   });
 
