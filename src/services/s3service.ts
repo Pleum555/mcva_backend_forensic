@@ -122,10 +122,18 @@ const cleanSuggestions = async (Test_Session: string, Student_ID: string): Promi
 const checkDifferent_IP = async (Log: LogEntry): Promise<any> => {
   // Process Analyze
   const uniqueIPs: Set<string> = new Set();
+  let isCheckIPs: boolean = false
+
   Log.Activities.forEach((activity) => {
-    const ip = activity.IP;
-    if (ip) {
-      uniqueIPs.add(ip);
+    if(activity.Status == 'Start test from cover page') {
+      uniqueIPs.clear()
+      isCheckIPs = true;
+    } else if(activity.Status == 'Start test from cover page') {
+      isCheckIPs = false;
+    }
+    
+    if(isCheckIPs && activity.IP) {
+      uniqueIPs.add(activity.IP);
     }
   });
   
@@ -150,12 +158,13 @@ const checkDifferent_IP = async (Log: LogEntry): Promise<any> => {
 
 const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
   // Process Analyze
-  const InActivePeriods: string[] = [];
+  let InActivePeriods: string[] = [];
   let When_InActive: number = -1; // Initialize to a default value
   let isActiveTest = false; // Flag to track if the test is active
 
   Log.Activities.forEach((activity, index) => {
     if (activity.Status === 'Start test from cover page') {
+      InActivePeriods = [] // Clear Data
       isActiveTest = true; // Set test active when starting the test
     }
 
@@ -184,8 +193,6 @@ const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
     }
   });
 
-  console.log(InActivePeriods)
-
   // Check For Screen Activity
   if (InActivePeriods.length >= 1) {
     let suggestion: SuggestEntry = {
@@ -200,18 +207,30 @@ const checkScreen_Activity = async (Log: LogEntry): Promise<any> => {
 };
 
 const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> => {
-  const shortIntervals: { part: string, question: string, interval: number }[] = []; // Array to store short intervals with part titles and question numbers
+  let shortIntervals: { part: string, question: string, interval: number }[] = []; // Array to store short intervals with part titles and question numbers
 
   let startQuestionTime: number | undefined;
   let currentQuestion: string | undefined;
   let currentPart: string | undefined;
 
+  let isCheckShort: boolean = false;
+
   // Process Analyze
   Log.Activities.forEach((activity, index) => {
     const status = activity.Status;
+    
+    if(activity.Status == 'Start test from cover page') {
+      shortIntervals = []
+      startQuestionTime = undefined;
+      currentQuestion = undefined;
+      currentPart = undefined;
+      isCheckShort = true;
+    } else if(activity.Status == 'Start test from cover page') {
+      isCheckShort = false;
+    }
 
     // Check for start of a question
-    if (status.startsWith('Go to question')) {
+    if (isCheckShort && status.startsWith('Go to question')) {
       const questionMatch = status.match(/Go to question (\d+)/); // Extract question number from status
       if (questionMatch) {
         currentQuestion = questionMatch[1]; // Extracted question number
@@ -219,7 +238,7 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
       }
     }
     // Check for start of a part
-    else if (status.startsWith('Go to')) {
+    else if (isCheckShort && status.startsWith('Go to')) {
       const partMatch = status.match(/Go to (.+)/); // Extract part title from status
       if (partMatch) {
         currentPart = partMatch[1]; // Extracted part title
@@ -229,10 +248,12 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
     }
     // Check for change question
     else if (
+      isCheckShort && (
       status.startsWith('Back to prev question') ||
       status.startsWith('Go to next question') ||
       status.startsWith('Back to first question') ||
       status.startsWith('Next to last question')
+      )
     ) {
       if (startQuestionTime !== undefined && currentQuestion !== undefined) {
         const endQuestionTime = Date.parse(activity.Timestamp);
@@ -267,7 +288,7 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
       }
     }
     // Check for end of a question
-    else if (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close') {
+    else if (isCheckShort && (status === 'Submit' || status === 'Finish Button' || status === 'Save and Close')) {
       if (startQuestionTime !== undefined && currentQuestion !== undefined) {
         const endQuestionTime = Date.parse(activity.Timestamp);
         const timeDifference = (endQuestionTime - startQuestionTime);
@@ -289,8 +310,6 @@ const checkShort_Interval_between_Answers = async (Log: LogEntry): Promise<any> 
       }
     }
   });
-
-  console.log(shortIntervals)
 
   // Check for short intervals between answers
   const SHORT_INTERVAL_THRESHOLD = 5 * 1000; // Threshold for short intervals in milliseconds
@@ -326,8 +345,6 @@ const checkRapid_Response_Submission = async (Log: LogEntry): Promise<any> => {
       console.log('response_submission = ', response_submission)
     }
   });
-
-  console.log(response_submission)
 
   if (response_submission !== undefined) {
     // Check for rapid response submission
